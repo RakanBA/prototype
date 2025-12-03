@@ -8,33 +8,26 @@ import plotly.express as px
 from PIL import Image, ImageOps
 
 # ==========================================
-# 1. PAGE CONFIG & CUSTOM STYLING
+# 1. PAGE CONFIG
 # ==========================================
 st.set_page_config(
     page_title="Heritage Vision AI",
-    page_icon="🕌", # Mosque/Heritage icon
+    page_icon="🏛️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS to force the "History" vibe
+# Standard Clean CSS (No colors, just spacing)
 st.markdown("""
     <style>
-    /* Import a nice font */
-    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
-    
-    h1, h2, h3 { font-family: 'Cinzel', serif; color: #4A3B32; }
-    
-    .stApp {
-        background-image: linear-gradient(to bottom right, #ffffff, #fdfbf7);
-    }
+    .main { background-color: #ffffff; }
+    div.stButton > button { width: 100%; border-radius: 5px; }
     
     .result-card {
-        background-color: white;
         padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        border: 1px solid #e0dace;
+        border-radius: 10px;
+        border: 1px solid #e6e6e6;
+        background-color: #f9f9f9;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -42,20 +35,18 @@ st.markdown("""
 # ==========================================
 # 2. DATA: HISTORICAL INFO (MOCK DB)
 # ==========================================
-# This acts as your "Database" of facts. 
-# You should ensure these keys MATCH your class_names exactly.
+# Ensure these keys match your 'labels.txt' exactly
 LANDMARK_INFO = {
     "Nasseef House": {
         "desc": "Built in 1881, Nasseef House is historically significant as the residence of King Abdulaziz when he entered Jeddah in 1925.",
         "location": "Old Jeddah (Al-Balad)",
-        "coords": [21.4833, 39.1833] # Lat, Long
+        "coords": [21.4833, 39.1833] 
     },
     "Al-Alawi Souq": {
         "desc": "One of the oldest markets in the region, connecting the port to the Makkah Gate. Famous for spices and incense.",
         "location": "Heart of Al-Balad",
         "coords": [21.4850, 39.1870]
     },
-    # Add a default fallback
     "Unknown": {
         "desc": "Historical data for this landmark is currently being curated.",
         "location": "Jeddah, Saudi Arabia",
@@ -93,20 +84,17 @@ output_details = interpreter.get_output_details()
 # 4. SIDEBAR
 # ==========================================
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/4342/4342728.png", width=80)
     st.title("Heritage Vision")
-    st.caption("Preserving Jeddah's History with AI")
+    st.info("System Status: Online 🟢")
     st.markdown("---")
     st.write("### 📂 Project Details")
-    st.info("This prototype demonstrates the potential of computer vision in digital tourism and heritage preservation.")
+    st.caption("This prototype demonstrates CNN-based classification for historical preservation.")
 
 # ==========================================
 # 5. MAIN INTERFACE
 # ==========================================
-col_header, col_logo = st.columns([4, 1])
-with col_header:
-    st.title("Landmark Recognition")
-    st.write("Identify historical architecture in Al-Balad.")
+st.title("Landmark Recognition System")
+st.write("Upload a photo of a historical site in Al-Balad to identify it.")
 
 uploaded_file = st.file_uploader("", type=["jpg", "png", "jpeg"])
 
@@ -114,7 +102,7 @@ if uploaded_file:
     # --- PROCESSING ---
     image = Image.open(uploaded_file).convert("RGB")
     
-    with st.spinner("Consulting the digital archive..."):
+    with st.spinner("Analyzing image..."):
         # Preprocess
         img_resized = ImageOps.fit(image, (224, 224), Image.Resampling.LANCZOS)
         input_data = np.array(img_resized, dtype=np.float32) / 255.0
@@ -134,43 +122,56 @@ if uploaded_file:
     col1, col2 = st.columns([1, 1.5], gap="large")
 
     with col1:
-        st.image(image, use_container_width=True, caption="Your Upload")
+        st.subheader("Input Image")
+        st.image(image, use_container_width=True)
         
-        # UX: Success Animation if high confidence
         if top_conf > 0.85:
-            st.balloons()
+            st.success("High Confidence Match")
 
     with col2:
         # Result Header
+        st.subheader("Analysis Results")
+        
+        # Clean Card Design
         st.markdown(f"""
         <div class="result-card">
-            <p style="color:#888; font-size: 14px; margin-bottom:0;">Identified Landmark</p>
-            <h1 style="margin-top:0;">{top_label}</h1>
-            <h3 style="color: #C69C6D;">{top_conf*100:.1f}% Confidence</h3>
+            <h2 style="margin:0; color: #333;">{top_label}</h2>
+            <p style="margin:0; color: #666;">Confidence: <b>{top_conf*100:.2f}%</b></p>
         </div>
         """, unsafe_allow_html=True)
         
         st.write("") # Spacer
 
         # TABS INTERFACE
-        tab1, tab2, tab3 = st.tabs(["📊 Analysis", "📜 History", "📍 Location"])
+        tab1, tab2, tab3 = st.tabs(["📊 Confidence", "📜 History", "📍 Location"])
 
         with tab1:
-            st.write("**Top 3 Predictions:**")
-            # Get Top 3
-            top_3_indices = output_data.argsort()[-3:][::-1]
-            top_3_labels = [class_names[i] for i in top_3_indices]
-            top_3_scores = [output_data[i] for i in top_3_indices]
-
-            # Custom Progress Bars
-            for label, score in zip(top_3_labels, top_3_scores):
-                st.write(f"{label}")
-                st.progress(float(score))
+            st.write("**Prediction Distribution**")
+            
+            # Interactive Chart
+            top_5_indices = output_data.argsort()[-5:][::-1]
+            top_5_labels = [class_names[i] for i in top_5_indices]
+            top_5_scores = [output_data[i] for i in top_5_indices]
+            
+            df_chart = pd.DataFrame({"Landmark": top_5_labels, "Probability": top_5_scores})
+            
+            fig = px.bar(
+                df_chart, 
+                x="Probability", 
+                y="Landmark", 
+                orientation='h',
+                text_auto='.1%',
+                color="Probability",
+                color_continuous_scale="Reds" # Standard Red scale
+            )
+            fig.update_layout(showlegend=False, height=300, margin=dict(l=0, r=0, t=0, b=0))
+            fig.update_xaxes(visible=False)
+            st.plotly_chart(fig, use_container_width=True)
 
         with tab2:
-            # Fetch Info from Dictionary (or use default)
+            # Fetch Info
             info = LANDMARK_INFO.get(top_label, LANDMARK_INFO["Unknown"])
-            st.markdown(f"**About {top_label}:**")
+            st.markdown(f"**About {top_label}**")
             st.write(info.get("desc", "No description available."))
             
         with tab3:
@@ -179,8 +180,7 @@ if uploaded_file:
             
             # Simple Map
             map_data = pd.DataFrame({'lat': [coords[0]], 'lon': [coords[1]]})
-            st.map(map_data, zoom=14)
+            st.map(map_data, zoom=15)
 
 else:
-    # Empty State with a nice helper image
-    st.info("👈 Upload an image to begin the analysis.")
+    st.info("👈 Waiting for image upload...")
