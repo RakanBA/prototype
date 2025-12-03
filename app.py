@@ -4,30 +4,67 @@ import requests
 import os
 import numpy as np
 import pandas as pd
-import plotly.express as px  # NEW: For professional charts
+import plotly.express as px
 from PIL import Image, ImageOps
 
 # ==========================================
-# 1. PAGE CONFIGURATION
+# 1. PAGE CONFIG & CUSTOM STYLING
 # ==========================================
 st.set_page_config(
     page_title="Heritage Vision AI",
-    page_icon="🏛️",
+    page_icon="🕌", # Mosque/Heritage icon
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for a cleaner look
+# Custom CSS to force the "History" vibe
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    div.stButton > button { width: 100%; border-radius: 5px; }
-    .stMetric { background-color: #ffffff; padding: 10px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    /* Import a nice font */
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
+    
+    h1, h2, h3 { font-family: 'Cinzel', serif; color: #4A3B32; }
+    
+    .stApp {
+        background-image: linear-gradient(to bottom right, #ffffff, #fdfbf7);
+    }
+    
+    .result-card {
+        background-color: white;
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border: 1px solid #e0dace;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. LOAD ASSETS (Cached)
+# 2. DATA: HISTORICAL INFO (MOCK DB)
+# ==========================================
+# This acts as your "Database" of facts. 
+# You should ensure these keys MATCH your class_names exactly.
+LANDMARK_INFO = {
+    "Nasseef House": {
+        "desc": "Built in 1881, Nasseef House is historically significant as the residence of King Abdulaziz when he entered Jeddah in 1925.",
+        "location": "Old Jeddah (Al-Balad)",
+        "coords": [21.4833, 39.1833] # Lat, Long
+    },
+    "Al-Alawi Souq": {
+        "desc": "One of the oldest markets in the region, connecting the port to the Makkah Gate. Famous for spices and incense.",
+        "location": "Heart of Al-Balad",
+        "coords": [21.4850, 39.1870]
+    },
+    # Add a default fallback
+    "Unknown": {
+        "desc": "Historical data for this landmark is currently being curated.",
+        "location": "Jeddah, Saudi Arabia",
+        "coords": [21.5433, 39.1728]
+    }
+}
+
+# ==========================================
+# 3. LOAD ASSETS (Cached)
 # ==========================================
 MODEL_URL = "https://huggingface.co/RakanBA/heritage-vision-v1/resolve/main/master_classifier.tflite?download=true"
 LABELS_URL = "https://huggingface.co/RakanBA/heritage-vision-v1/resolve/main/labels.txt?download=true"
@@ -36,7 +73,6 @@ LOCAL_LABELS = "labels.txt"
 
 @st.cache_resource
 def load_assets():
-    # Download logic (Same as before, just condensed)
     if not os.path.exists(LOCAL_LABELS):
         with open(LOCAL_LABELS, 'wb') as f: f.write(requests.get(LABELS_URL).content)
     if not os.path.exists(LOCAL_MODEL):
@@ -54,110 +90,97 @@ input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
 # ==========================================
-# 3. SIDEBAR (Context & Info)
+# 4. SIDEBAR
 # ==========================================
 with st.sidebar:
-    st.title("🏛️ Heritage Vision")
+    st.image("https://cdn-icons-png.flaticon.com/512/4342/4342728.png", width=80)
+    st.title("Heritage Vision")
+    st.caption("Preserving Jeddah's History with AI")
     st.markdown("---")
-    st.info("**About:** This system uses a CNN (Convolutional Neural Network) to classify historical landmarks in Old Jeddah.")
-    
-    st.write("### 🛠️ How it works")
-    st.markdown("""
-    1. Image is resized to **224x224**.
-    2. Normalized to range **[0,1]**.
-    3. Processed by **TFLite Quantized Model**.
-    """)
-    st.markdown("---")
-    st.caption(f"v1.0 | Classes: {len(class_names)}")
+    st.write("### 📂 Project Details")
+    st.info("This prototype demonstrates the potential of computer vision in digital tourism and heritage preservation.")
 
 # ==========================================
-# 4. MAIN INTERFACE
+# 5. MAIN INTERFACE
 # ==========================================
-st.title("Landmark Recognition System")
-st.markdown("##### 📸 Upload a photo of a historical site to identify it.")
+col_header, col_logo = st.columns([4, 1])
+with col_header:
+    st.title("Landmark Recognition")
+    st.write("Identify historical architecture in Al-Balad.")
 
 uploaded_file = st.file_uploader("", type=["jpg", "png", "jpeg"])
 
 if uploaded_file:
+    # --- PROCESSING ---
+    image = Image.open(uploaded_file).convert("RGB")
+    
+    with st.spinner("Consulting the digital archive..."):
+        # Preprocess
+        img_resized = ImageOps.fit(image, (224, 224), Image.Resampling.LANCZOS)
+        input_data = np.array(img_resized, dtype=np.float32) / 255.0
+        input_data = np.expand_dims(input_data, axis=0)
+
+        # Inference
+        interpreter.set_tensor(input_details[0]['index'], input_data)
+        interpreter.invoke()
+        output_data = interpreter.get_tensor(output_details[0]['index'])[0]
+
+        # Results
+        top_index = np.argmax(output_data)
+        top_label = class_names[top_index]
+        top_conf = output_data[top_index]
+
+    # --- UI LAYOUT ---
     col1, col2 = st.columns([1, 1.5], gap="large")
 
-    # --- LEFT COLUMN: IMAGE ---
     with col1:
-        st.subheader("Input Image")
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, use_container_width=True, caption="Source Image")
+        st.image(image, use_container_width=True, caption="Your Upload")
+        
+        # UX: Success Animation if high confidence
+        if top_conf > 0.85:
+            st.balloons()
 
-    # --- RIGHT COLUMN: ANALYTICS ---
     with col2:
-        st.subheader("AI Diagnosis")
-        
-        with st.spinner("Processing..."):
-            # Preprocessing
-            img_resized = ImageOps.fit(image, (224, 224), Image.Resampling.LANCZOS)
-            input_data = np.array(img_resized, dtype=np.float32) / 255.0
-            input_data = np.expand_dims(input_data, axis=0)
-
-            # Inference
-            interpreter.set_tensor(input_details[0]['index'], input_data)
-            interpreter.invoke()
-            output_data = interpreter.get_tensor(output_details[0]['index'])[0]
-
-            # Results
-            top_index = np.argmax(output_data)
-            top_label = class_names[top_index]
-            top_conf = output_data[top_index]
-
-        # 1. Primary Result Card
-        result_color = "green" if top_conf > 0.7 else "orange"
-        result_icon = "✅" if top_conf > 0.7 else "⚠️"
-        
+        # Result Header
         st.markdown(f"""
-        <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; border-left: 5px solid {result_color};">
-            <h2 style="margin:0; color: #333;">{result_icon} {top_label}</h2>
-            <p style="margin:0; color: #666;">Confidence Score: <b>{top_conf*100:.2f}%</b></p>
+        <div class="result-card">
+            <p style="color:#888; font-size: 14px; margin-bottom:0;">Identified Landmark</p>
+            <h1 style="margin-top:0;">{top_label}</h1>
+            <h3 style="color: #C69C6D;">{top_conf*100:.1f}% Confidence</h3>
         </div>
         """, unsafe_allow_html=True)
         
         st.write("") # Spacer
 
-        # 2. Interactive Probability Chart (Plotly)
-        st.markdown("### 📊 Probability Breakdown")
-        
-        # Prepare data for top 5
-        # Get indices of top 5
-        top_5_indices = output_data.argsort()[-5:][::-1]
-        top_5_labels = [class_names[i] for i in top_5_indices]
-        top_5_scores = [output_data[i] for i in top_5_indices]
-        
-        df_chart = pd.DataFrame({
-            "Landmark": top_5_labels,
-            "Probability": top_5_scores
-        })
-        
-        # Plotly Bar Chart (Much nicer than default)
-        fig = px.bar(
-            df_chart, 
-            x="Probability", 
-            y="Landmark", 
-            orientation='h',
-            text_auto='.1%',
-            color="Probability",
-            color_continuous_scale="Reds"
-        )
-        fig.update_layout(showlegend=False, height=300, margin=dict(l=0, r=0, t=0, b=0))
-        fig.update_xaxes(visible=False) # Hide x axis numbers for cleaner look
-        st.plotly_chart(fig, use_container_width=True)
+        # TABS INTERFACE
+        tab1, tab2, tab3 = st.tabs(["📊 Analysis", "📜 History", "📍 Location"])
 
-        # 3. Feedback Loop (Simulated)
-        with st.expander("Is this result incorrect?"):
-            st.write("Help us improve the model:")
-            c1, c2 = st.columns(2)
-            if c1.button("❌ Wrong Landmark"):
-                st.toast("Feedback recorded! We will review this image.", icon="📝")
-            if c2.button("✅ Correct"):
-                st.toast("Thanks for verifying!", icon="👍")
+        with tab1:
+            st.write("**Top 3 Predictions:**")
+            # Get Top 3
+            top_3_indices = output_data.argsort()[-3:][::-1]
+            top_3_labels = [class_names[i] for i in top_3_indices]
+            top_3_scores = [output_data[i] for i in top_3_indices]
+
+            # Custom Progress Bars
+            for label, score in zip(top_3_labels, top_3_scores):
+                st.write(f"{label}")
+                st.progress(float(score))
+
+        with tab2:
+            # Fetch Info from Dictionary (or use default)
+            info = LANDMARK_INFO.get(top_label, LANDMARK_INFO["Unknown"])
+            st.markdown(f"**About {top_label}:**")
+            st.write(info.get("desc", "No description available."))
+            
+        with tab3:
+            info = LANDMARK_INFO.get(top_label, LANDMARK_INFO["Unknown"])
+            coords = info.get("coords", [21.4858, 39.1925])
+            
+            # Simple Map
+            map_data = pd.DataFrame({'lat': [coords[0]], 'lon': [coords[1]]})
+            st.map(map_data, zoom=14)
 
 else:
-    # Empty State
-    st.info("👈 Waiting for upload...")
-    st.markdown("Try uploading a clear photo of **Nasseef House** or **Al-Alawi Souq**.")
+    # Empty State with a nice helper image
+    st.info("👈 Upload an image to begin the analysis.")
