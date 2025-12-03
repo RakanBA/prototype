@@ -4,3 +4,4 @@ requests
 numpy
 Pillow
 pandas
+plotly
